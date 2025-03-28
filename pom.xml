@@ -32,6 +32,7 @@
 		<caffeine.version>3.2.0</caffeine.version>
 		<lombok.version>1.18.36</lombok.version>
 		<mockito.version>5.16.1</mockito.version>
+		<openfeign.verion>4.2.1</openfeign.verion>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -51,6 +52,12 @@
 			<groupId>com.github.ben-manes.caffeine</groupId>
 			<artifactId>caffeine</artifactId>
 			<version>${caffeine.version}</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-openfeign</artifactId>
+			<version>${openfeign.verion}</version>
 		</dependency>
 
 		<dependency>

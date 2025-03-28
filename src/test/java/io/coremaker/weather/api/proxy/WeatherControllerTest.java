@@ -1,6 +1,8 @@
 package io.coremaker.weather.api.proxy;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import io.coremaker.weather.api.proxy.client.NominatimClient;
+import io.coremaker.weather.api.proxy.client.OpenMeteoClient;
 import io.coremaker.weather.api.proxy.model.NominatimResponse;
 import io.coremaker.weather.api.proxy.model.OpenMeteoResponse;
 import io.coremaker.weather.api.proxy.model.WeatherResponse;
@@ -10,13 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.client.RestTemplate;
+
+import java.util.Collections;
 
 import static org.hamcrest.Matchers.is;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -38,14 +39,16 @@ class WeatherControllerTest {
 	public static final String USER_ID = "USER_ID";
 	public static final String USER_ID_VALUE = "USER_ID_VALUE";
 	public static final String USER_ID_VALUE_2 = "USER_ID_VALUE_2";
-	public static final String NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
-	public static final String OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
-	public static final String URI_PATH = "/weather";
+	public static final String PATH = "/weather";
+	public static final String JSON = "json";
 	@Autowired
 	private MockMvc mockMvc;
 
 	@MockitoBean
-	private RestTemplate restTemplate;
+	private NominatimClient nominatimClient;
+
+	@MockitoBean
+	private OpenMeteoClient openMeteoClient;
 
 	@Autowired
 	private Cache<String, WeatherResponse> weatherCache;
@@ -67,12 +70,11 @@ class WeatherControllerTest {
 		var meteoResponse = new OpenMeteoResponse();
 		meteoResponse.setCurrentWeather(currentWeather);
 
-		when(restTemplate
-				.getForEntity(contains(NOMINATIM_URL), eq(NominatimResponse[].class)))
-				.thenReturn(new ResponseEntity<>(new NominatimResponse[] {location},HttpStatus.OK));
+		when(nominatimClient.getLocationCoordinates(eq(LONDON), eq(JSON)))
+				.thenReturn(Collections.singletonList(location));
 
-		when(restTemplate.getForEntity(contains(OPEN_METEO_URL), eq(OpenMeteoResponse.class)))
-				.thenReturn(new ResponseEntity<>(meteoResponse, HttpStatus.OK));
+		when(openMeteoClient.getWeatherData(anyString(), anyString(), anyBoolean()))
+				.thenReturn(meteoResponse);
 	}
 
 	@Test
@@ -87,10 +89,10 @@ class WeatherControllerTest {
 				.andExpect(jsonPath("$.windDirection", is(WIND_DIRECTION)));
 
 		// Verify the external APIs were called
-		verify(restTemplate, times(1))
-				.getForEntity(contains(NOMINATIM_URL), eq(NominatimResponse[].class));
-		verify(restTemplate, times(1))
-				.getForEntity(contains(OPEN_METEO_URL), eq(OpenMeteoResponse.class));
+		verify(nominatimClient, times(1))
+				.getLocationCoordinates(eq(LONDON), eq(JSON));
+		verify(openMeteoClient, times(1))
+				.getWeatherData(anyString(), anyString(), anyBoolean());
 	}
 
 	@Test
@@ -99,14 +101,14 @@ class WeatherControllerTest {
 		performRequestWithSuccess(USER_ID_VALUE);
 
 		// Verify the external APIs were called only once
-		verify(restTemplate, times(1))
-				.getForEntity(contains(NOMINATIM_URL), eq(NominatimResponse[].class));
-		verify(restTemplate, times(1))
-				.getForEntity(contains(OPEN_METEO_URL), eq(OpenMeteoResponse.class));
+		verify(nominatimClient, times(1))
+				.getLocationCoordinates(LONDON, JSON);
+		verify(openMeteoClient, times(1))
+				.getWeatherData(anyString(), anyString(), anyBoolean());
 	}
 
 	private void performRequestWithSuccess(final String userId) throws Exception {
-		mockMvc.perform(get(URI_PATH).param(CITY, LONDON).header(USER_ID, userId))
+		mockMvc.perform(get(PATH).param(CITY, LONDON).header(USER_ID, userId))
 				.andExpect(status().isOk());
 	}
 
@@ -115,7 +117,7 @@ class WeatherControllerTest {
 		for (int i = 0; i < 5; i++) {
 			performRequestWithSuccess(USER_ID_VALUE_2);
 		}
-		mockMvc.perform(get(URI_PATH).param(CITY, LONDON).header(USER_ID, USER_ID_VALUE_2))
+		mockMvc.perform(get(PATH).param(CITY, LONDON).header(USER_ID, USER_ID_VALUE_2))
 				.andExpect(status().is(HttpStatus.TOO_MANY_REQUESTS.value()))
 				.andExpect(jsonPath("$.status", is(HttpStatus.TOO_MANY_REQUESTS.value())))
 				.andExpect(jsonPath("$.message").exists());

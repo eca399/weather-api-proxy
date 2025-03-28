@@ -1,17 +1,15 @@
 package io.coremaker.weather.api.proxy.service;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import feign.FeignException;
+import io.coremaker.weather.api.proxy.client.NominatimClient;
+import io.coremaker.weather.api.proxy.client.OpenMeteoClient;
 import io.coremaker.weather.api.proxy.exception.ExternalApiException;
 import io.coremaker.weather.api.proxy.model.NominatimResponse;
-import io.coremaker.weather.api.proxy.model.OpenMeteoResponse;
 import io.coremaker.weather.api.proxy.model.WeatherResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -20,14 +18,9 @@ import java.util.Optional;
 @Slf4j
 @RequiredArgsConstructor
 public class WeatherService {
-    private final RestTemplate restTemplate;
     private final Cache<String, WeatherResponse> weatherCache;
-
-    @Value("${nominatim.api.url}")
-    private String NOMINATIM_API_URL;
-
-    @Value("${open.meteo.api.url}")
-    private String OPEN_METEO_API_URL;
+    private final NominatimClient nominatimClient;
+    private final OpenMeteoClient openMeteoClient;
 
     public WeatherResponse getWeatherInfoForCity(final String city) {
         var cachedWeatherResponse = weatherCache.getIfPresent(city);
@@ -39,38 +32,29 @@ public class WeatherService {
         log.info("Cache miss for city {}, calling external APIs", city);
 
         try {
-            var cityCoordinates = getCityCoordinates(city);
-            var weatherResponse = getWeatherInfoForCoordinates(cityCoordinates, city);
+            var locationCoordinates = getLocationCoordinates(city);
+            var weatherResponse = getWeatherInfoForCoordinates(locationCoordinates, city);
             weatherCache.put(city, weatherResponse);
             return weatherResponse;
-        } catch (final RestClientException e) {
+        } catch (FeignException e) {
             log.error("Error calling external API for city {}", city, e);
             throw new ExternalApiException("Failed to fetch weather data: " + e.getMessage());
         }
     }
 
-    private NominatimResponse getCityCoordinates(final String city) {
-        var url = UriComponentsBuilder.fromUriString(NOMINATIM_API_URL)
-                .queryParam("q", city)
-                .queryParam("format", "json")
-                .build()
-                .toUriString();
-        var locations = restTemplate.getForEntity(url, NominatimResponse[].class).getBody();
-        if (locations == null || locations.length == 0) {
+    private NominatimResponse getLocationCoordinates(final String city) {
+        var locations = nominatimClient.getLocationCoordinates(city, "json");
+        if (locations == null || locations.isEmpty()) {
             throw new ExternalApiException("Location coordinates not found for " + city);
         }
-        return locations[0];
+        return locations.get(0);
     }
 
     private WeatherResponse getWeatherInfoForCoordinates(final NominatimResponse coordinates, final String city) {
-        var url = UriComponentsBuilder.fromUriString(OPEN_METEO_API_URL)
-                .queryParam("latitude", coordinates.getLat())
-                .queryParam("longitude", coordinates.getLon())
-                .queryParam("current_weather", true)
-                .build()
-                .toUriString();
-
-        var weatherData = restTemplate.getForEntity(url, OpenMeteoResponse.class).getBody();
+        var weatherData = openMeteoClient.getWeatherData(
+                coordinates.getLat(),
+                coordinates.getLon(),
+                true);
         if (weatherData == null || weatherData.getCurrentWeather() == null) {
             throw new ExternalApiException("No weather data found for " + city);
         }
@@ -85,5 +69,4 @@ public class WeatherService {
                 .timestamp(LocalDateTime.now())
                 .build();
     }
-
 }
