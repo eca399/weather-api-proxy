@@ -7,6 +7,7 @@ import io.coremaker.weather.api.proxy.model.OpenMeteoResponse;
 import io.coremaker.weather.api.proxy.model.WeatherResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -22,9 +23,11 @@ public class WeatherService {
     private final RestTemplate restTemplate;
     private final Cache<String, WeatherResponse> weatherCache;
 
-    private static final String NOMINATIM_API_URL = "https://nominatim.openstreetmap.org/search";
-    private static final String OPEN_METEO_API_URL = "https://api.open-meteo.com/v1/forecast";
+    @Value("${nominatim.api.url}")
+    private String NOMINATIM_API_URL;
 
+    @Value("${open.meteo.api.url}")
+    private String OPEN_METEO_API_URL;
 
     public WeatherResponse getWeatherInfoForCity(final String city) {
         var cachedWeatherResponse = weatherCache.getIfPresent(city);
